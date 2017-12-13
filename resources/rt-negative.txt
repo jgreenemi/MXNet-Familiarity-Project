@@ -1,0 +1,2 @@
+This is a negative sentence with bad comments.
+This is not so good.
