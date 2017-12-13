@@ -87,5 +87,77 @@ def _test_load_data_with_labels():
     pprint(y)
 
 
+def pad_sentences(sentences, padding_word=''):
+    """
+    Pad all sentences to the same length for processing, matching the length of the longest sentence.
+    :param sentences:
+    :param padding_word:
+    :return:
+    """
+    sequence_length = max(len(x) for x in sentences)
+    padded_sentences = []
+
+    for sentence in sentences:
+        num_padding = sequence_length - len(sentence)
+        new_sentence = sentence + [padding_word] * num_padding
+        padded_sentences.append(new_sentence)
+
+    return padded_sentences
+
+
+def build_vocab(sentences):
+    """
+    Builds vocabulary mapping from word to index, based on the sentences passed in.
+    Return both the vocabulary mapping and inverse vocabulary mapping.
+    :param sentences:
+    :return:
+    """
+
+    # Build vocab using Counter dict subclass.
+    word_counts = Counter(itertools.chain(*sentences))
+
+    # Map word from its index.
+    vocabulary_inverse = [x[0] for x in word_counts.most_common()]
+
+    # Map index from its word.
+    vocabulary = {x: i for i, x in enumerate(vocabulary_inverse)}
+
+    return [vocabulary, vocabulary_inverse]
+
+
+def build_input_data(sentences, labels, vocabulary):
+    """
+    Map sentences and labels to vectors based on a vocabulary.
+    :param sentences:
+    :param labels:
+    :param vocabulary:
+    :return:
+    """
+
+    # Think I can make this more readable.
+    x = np.array([
+        [vocabulary[word] for word in sentence] for sentence in sentences
+    ])
+
+    y = np.array(labels)
+
+    return [x, y]
+
+def _test_build_input_data():
+    print('Loading data with labels.')
+    sentences, labels = load_data_with_labels()
+    print('Building vocab.')
+    vocabulary, vocab_inv = build_vocab(sentences)
+    print('Building input.')
+    x, y = build_input_data(sentences, labels, vocabulary)
+
+    print(type(x))
+    pprint(x)
+    print(type(y))
+    pprint(y)
+
+    print('Done!')
+
 if __name__ == '__main__':
     _test_load_data_with_labels()
+    _test_build_input_data()
