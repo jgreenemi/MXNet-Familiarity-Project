@@ -152,21 +152,24 @@ def load_and_preprocess():
     x_shuffled = x[shuffle_indices]
     y_shuffled = y[shuffle_indices]
 
-    # Split the training and evaluation sets. Using a fixed 1000 item size, it looks like. Should set this to be a
-    # config parameter.
+    # Split the training and evaluation sets.
+    # *_train will use all items from the first to the 1000th from the end.
+    # *_eval will use all items from the 1000th from the end, to the end.
+    # This can be improved by using cross-validation, or at least a percentage-based split.
     x_train, x_eval = x_shuffled[:-1000], x_shuffled[-1000:]
     y_train, y_eval = y_shuffled[:-1000], y_shuffled[-1000:]
 
+    # Set the sentence max length value for sentence_size.
     sentence_size = x_train.shape[1]
 
     # If printing output was set, print. Otherwise build the dictionary and return it.
 
     resulting_data = {
         'Train/Eval Split': '{}/{}'.format(len(y_train), len(y_eval)),
-        'Train Shape': x_train.shape,
-        'Eval Shape': x_eval.shape,
-        'Vocab Size': vocab_size,
-        'Sentence Max Words': sentence_size
+        'x_train_shape': x_train.shape,
+        'x_eval_shape': x_eval.shape,
+        'vocab_size': vocab_size,
+        'sentence_size': sentence_size
     }
 
     if print_to_stdout:
@@ -233,7 +236,6 @@ def _test_build_input_data():
 
 
 if __name__ == '__main__':
-
     # Run unit tests and raise an Exception if any fail.
     testresult = []
     testresult.append(_test_load_data_with_labels())
