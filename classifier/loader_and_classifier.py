@@ -7,9 +7,14 @@ from collections import Counter
 from pprint import pprint
 from urllib.request import urlopen
 
+# Setting some constants here.
+# Set this to False to reduce output.
+print_to_stdout = True
+
 datafile_url_prefix = 'https://raw.githubusercontent.com/jgreenemi/MXNet-Familiarity-Project/master/resources/'
 datafile_positive = '{}rt-positive.txt'.format(datafile_url_prefix)
 datafile_negative = '{}rt-negative.txt'.format(datafile_url_prefix)
+
 
 def clean_strings(string):
     """
@@ -52,18 +57,18 @@ def load_data_with_labels():
     negative_text = [s.strip() for s in negative_text]
 
     # Split sentences into words by space delimiter.
-    x_text = positive_text + negative_text
-    x_text = [clean_strings(sentence) for sentence in x_text]
-    x_text = [sentence.split(" ") for sentence in x_text]
+    sentences = positive_text + negative_text
+    sentences = [clean_strings(sentence) for sentence in sentences]
+    sentences = [sentence.split(" ") for sentence in sentences]
 
     # And generate labels as ordered List objects.
     positive_labels = [1 for _ in positive_text]
     negative_labels = [0 for _ in negative_text]
 
-    # Create a vector numpy.ndarray object for labels, to match up with the concatenated x_text vector List.
-    y = np.concatenate([positive_labels, negative_labels], 0)
+    # Create a vector numpy.ndarray object for labels, to match up with the concatenated sentences vector List.
+    labels = np.concatenate([positive_labels, negative_labels], 0)
 
-    return [x_text, y]
+    return [sentences, labels]
 
 
 def pad_sentences(sentences, padding_word=''):
@@ -88,6 +93,7 @@ def build_vocab(sentences):
     """
     Builds vocabulary mapping from word to index, based on the sentences passed in.
     Return both the vocabulary mapping and inverse vocabulary mapping.
+    The sentences passed in should already be padded to a uniform length.
     :param sentences:
     :return:
     """
@@ -123,6 +129,58 @@ def build_input_data(sentences, labels, vocabulary):
     return [x, y]
 
 
+def load_and_preprocess():
+    """
+    Load and preprocess the data based on the configured input files. Return the input vectors, the labels,
+    vocabulary and inverse vocabulary.
+
+    This is the major/main function of this script.
+    :return:
+    """
+
+    # First, load and preprocess the data to get it ready for use in our algorithm.
+    sentences, labels = load_data_with_labels()
+    sentences_padded = pad_sentences(sentences)
+    vocabulary, vocabulary_inverse = build_vocab(sentences_padded)
+    x, y = build_input_data(sentences_padded, labels, vocabulary)
+
+    vocab_size = len(vocabulary)
+
+    # Randomly shuffle the data to avoid ordering bias in dividing training and evaluation sets.
+    np.random.seed(10)
+    shuffle_indices = np.random.permutation(np.arange(len(y)))
+    x_shuffled = x[shuffle_indices]
+    y_shuffled = y[shuffle_indices]
+
+    # Split the training and evaluation sets. Using a fixed 1000 item size, it looks like. Should set this to be a
+    # config parameter.
+    x_train, x_eval = x_shuffled[:-1000], x_shuffled[-1000:]
+    y_train, y_eval = y_shuffled[:-1000], y_shuffled[-1000:]
+
+    sentence_size = x_train.shape[1]
+
+    # If printing output was set, print. Otherwise build the dictionary and return it.
+
+    resulting_data = {
+        'Train/Eval Split': '{}/{}'.format(len(y_train), len(y_eval)),
+        'Train Shape': x_train.shape,
+        'Eval Shape': x_eval.shape,
+        'Vocab Size': vocab_size,
+        'Sentence Max Words': sentence_size
+    }
+
+    if print_to_stdout:
+        for k, v in resulting_data.items():
+            print('{}: {}'.format(k, v))
+
+    return resulting_data
+
+
+####
+# From here down are the unit test functions.
+####
+
+
 def _test_load_data_with_labels():
     """
     Expecting output like:
@@ -140,6 +198,8 @@ def _test_load_data_with_labels():
 
     try:
         [x, y] = load_data_with_labels()
+
+        # Uncomment to print the results.
         #print(type(x))
         #pprint(x)
         #print(type(y))
@@ -173,10 +233,14 @@ def _test_build_input_data():
 
 
 if __name__ == '__main__':
+
+    # Run unit tests and raise an Exception if any fail.
     testresult = []
     testresult.append(_test_load_data_with_labels())
     testresult.append(_test_build_input_data())
-    pprint(testresult)
     for testresult, testmsg in testresult:
         if not testresult:
             raise Exception('Tests did not pass: {}'.format(testmsg))
+
+    # At this point all unit tests have completed, run main script.
+    load_and_preprocess()
