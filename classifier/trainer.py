@@ -24,7 +24,7 @@ def train(vocab_size, sentence_size):
 
     # Now we set up the first network layer (embedding)
     # Create an embedding layer to learn the representation of words in a lower dimensional subspace, akin to word2vec.
-    # This is the number of dimensions to embed the words into.
+    # This is the number of dimensions to embed the words into. Appears to have been arbitrarily chosen.
     num_embed = 300
 
     embed_layer = mx.sym.Embedding(
@@ -41,6 +41,7 @@ def train(vocab_size, sentence_size):
     )
 
     return
+
 
 def _test_train():
     try:
