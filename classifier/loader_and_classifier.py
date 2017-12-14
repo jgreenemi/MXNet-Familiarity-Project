@@ -66,27 +66,6 @@ def load_data_with_labels():
     return [x_text, y]
 
 
-def _test_load_data_with_labels():
-    """
-    Expecting output like:
-
-    <class 'list'>
-    [["b'this", 'is', 'a', 'positive', 'sentence', 'with', 'happy', "comments!'"],
-     ['b', "i'm", 'very', 'pleased', 'with', 'this'],
-     ["b'this", 'is', 'a', 'negative', 'sentence', 'with', 'bad', 'comments', "'"],
-     ["b'this", 'is', 'not', 'so', 'good', "'"]]
-    <class 'numpy.ndarray'>
-    array([1, 1, 0, 0])
-
-    :return:
-    """
-    [x, y] = load_data_with_labels()
-    print(type(x))
-    pprint(x)
-    print(type(y))
-    pprint(y)
-
-
 def pad_sentences(sentences, padding_word=''):
     """
     Pad all sentences to the same length for processing, matching the length of the longest sentence.
@@ -143,21 +122,61 @@ def build_input_data(sentences, labels, vocabulary):
 
     return [x, y]
 
+
+def _test_load_data_with_labels():
+    """
+    Expecting output like:
+
+    <class 'list'>
+    [["b'this", 'is', 'a', 'positive', 'sentence', 'with', 'happy', "comments!'"],
+     ['b', "i'm", 'very', 'pleased', 'with', 'this'],
+     ["b'this", 'is', 'a', 'negative', 'sentence', 'with', 'bad', 'comments', "'"],
+     ["b'this", 'is', 'not', 'so', 'good', "'"]]
+    <class 'numpy.ndarray'>
+    array([1, 1, 0, 0])
+
+    :return:
+    """
+
+    try:
+        [x, y] = load_data_with_labels()
+        #print(type(x))
+        #pprint(x)
+        #print(type(y))
+        #pprint(y)
+        return [True, '']
+
+    except Exception as e:
+        return [False, '_test_load_data_with_labels: {}'.format(e)]
+
+
 def _test_build_input_data():
-    print('Loading data with labels.')
-    sentences, labels = load_data_with_labels()
-    print('Building vocab.')
-    vocabulary, vocab_inv = build_vocab(sentences)
-    print('Building input.')
-    x, y = build_input_data(sentences, labels, vocabulary)
+    try:
+        #print('Loading data with labels.')
+        sentences, labels = load_data_with_labels()
+        #print('Building vocab.')
+        vocabulary, vocab_inv = build_vocab(sentences)
+        #print('Building input.')
+        x, y = build_input_data(sentences, labels, vocabulary)
 
-    print(type(x))
-    pprint(x)
-    print(type(y))
-    pprint(y)
+        # Uncomment to print the results.
+        #print(type(x))
+        #pprint(x)
+        #print(type(y))
+        #pprint(y)
 
-    print('Done!')
+        #print('Done!')
+        return [True, '']
+
+    except Exception as e:
+        return [False, '_test_build_input_data: {}'.format(e)]
+
 
 if __name__ == '__main__':
-    _test_load_data_with_labels()
-    _test_build_input_data()
+    testresult = []
+    testresult.append(_test_load_data_with_labels())
+    testresult.append(_test_build_input_data())
+    pprint(testresult)
+    for testresult, testmsg in testresult:
+        if not testresult:
+            raise Exception('Tests did not pass: {}'.format(testmsg))
