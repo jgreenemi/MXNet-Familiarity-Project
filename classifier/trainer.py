@@ -1,10 +1,14 @@
 from .loader import load_and_preprocess
+from collections import namedtuple
+import math
 import mxnet as mx
+import numpy as np
 import os
 import sys
+import time
 
 
-def train(vocab_size, sentence_size):
+def build_and_train(vocab_size, sentence_size):
     """
     Load data into the algorithm and train on it. In the future this will likely become a method to a class for
     portability.
@@ -111,12 +115,214 @@ def train(vocab_size, sentence_size):
     # Set the CNN pointer to the "back" of the network.
     cnn = sm
 
+    # Define the structure of the CNN Model as a named tuple.
+    CNNModel = namedtuple(
+        'CNNModel',
+        [
+            'cnn_exec',
+            'symbol',
+            'data',
+            'label',
+            'param_blocks'
+        ]
+    )
+
+    # Set what device to train on.
+    ctx = mx.gpu(0)
+    # Use the following if the training host doesn't have a GPU to use.
+    # ctx = mx.cpu(0)
+
+    arg_names = cnn.list_arguments()
+    input_shapes = {}
+    input_shapes['data'] = (batch_size, sentence_size)
+
+    arg_shape, out_shape, aux_shape = cnn.infer_shape(**input_shapes)
+
+    arg_arrays = [mx.nd.zeros(s, ctx) for s in arg_shape]
+    args_grad = {}
+
+    # TODO Not sure what's happening here.
+    for shape, name in zip(arg_shape, arg_names):
+        # Input, output.
+        if name in ['softmax_label', 'data']:
+            continue
+        args_grad[name] = mx.nd.zeros(shape, ctx)
+
+    cnn_exec = cnn.bind(
+        ctx=ctx,
+        args=arg_arrays,
+        args_grad=args_grad,
+        grad_req='add'
+    )
+
+    param_blocks = []
+    arg_dict = dict(zip(arg_names, cnn_exec.arg_arrays))
+
+    # TODO Does that randomize the initial values? What's the 0.1 value for here?
+    initializer = mx.initializer.Uniform(0.1)
+
+    for i, name in enumerate(arg_names):
+        # Input, output.
+        if name in ['softmax_label', 'data']:
+            continue
+    initializer(name, arg_dict[name])
+
+    # TODO what are the capabilities of an append statement like this?
+    param_blocks.append(
+        (i, arg_dict[name], args_grad[name], name)
+    )
+
+    # This does not appear to get used.
+    out_dict = dict(zip(cnn.list_outputs(), cnn_exec.outputs))
+
+    data = cnn_exec.arg_dict['data']
+    label = cnn_exec.arg_dict['softmax_label']
+
+    cnn_model = CNNModel(
+        cnn_exec=cnn_exec,
+        symbol=cnn,
+        data=data,
+        label=label,
+        param_blocks=param_blocks
+    )
+
+
+    # Train the CNN model using backpropagation.
+
+    # TODO What are my optimizer options in MXNet?
+    optimizer = 'rmsprop'
+    max_grad_norm = 5.0
+    learning_rate = 0.0005
+    epoch = 50
+
+    # Build optimizer.
+    opt = mx.optimizer.create(optimizer)
+    opt.lr = learning_rate
+
+    updater = mx.optimizer.get_updater(opt)
+
+    # Create logging output. Unnecessary if a proper logging facility is created otherwise.
+    logs = sys.stderr
+
+    # For each training epoch
+    for iteration in range(epoch):
+        tick = time.time()
+        num_correct = 0
+        num_total = 0
+
+        # Over each batch of the training data
+        for begin in range(0, prepro_data['x_train_shape'][0], batch_size):
+            batchX = prepro_data['x_train'][begin:begin+batch_size]
+            batchY = prepro_data['y_train'][begin:begin+batch_size]
+            if batchX.shape[0] != batch_size:
+                continue
+
+            cnn_model.data[:] = batchX
+            cnn_model.label[:] = batchY
+
+            # Forward propagation.
+            # TODO What is the significance of is_train?
+            cnn_model.cnn_exec.forward(is_train=True)
+
+            # Backpropagation.
+            cnn_model.cnn_exec.backward()
+
+            # Evaluate on the training data.
+            num_correct += sum(
+                batchY == np.argmax(
+                    cnn_model.cnn_exec.outputs[0].asnumpy(),
+                    axis=1
+                )
+            )
+            num_total += len(batchY)
+
+            # Update the weights.
+            norm = 0
+            for idx, weight, grad, name in cnn_model.param_blocks:
+                grad /= batch_size
+                l2_norm = mx.nd.norm(grad).asscalar()
+                norm += l2_norm * l2_norm
+
+            norm = math.sqrt(norm)
+            for idx, weight, grad, name in cnn_model.param_blocks:
+                if norm > max_grad_norm:
+                    grad *= (max_grad_norm / norm)
+
+                updater(idx, grad, weight)
+
+                # Reset the gradient to zero.
+                grad[:] = 0.0
+
+        # Decay the learning rate for this epoch to ensure we're not overshooting the optimum.
+        if iteration % 50 == 0 and iteration > 0:
+            opt.lr *= 0.5
+            print >> logs, 'Reset learning rate to {}'.format(opt.lr)
+
+        # End the training loop for this epoch.
+        tock = time.time()
+        train_time = tock - tick
+        train_acc = num_correct * 100 / float(num_total)
+
+        # Save the checkpoint to disk.
+        if (iteration + 1) % 10 == 0:
+            prefix = 'cnn'
+            cnn_model.symbol.save('./{}-symbol.json'.format(prefix))
+            save_dict = {
+                ('arg:{}'.format(k)): v for k, v in cnn_model.cnn_exec.arg_dict.items()
+            }
+            save_dict.update(
+                {
+                    ('aux:{}'.format(k)): v for k, v in cnn_model.cnn_exec.aux_dict.items()
+                }
+            )
+            # Tutorial gives different syntax for this, could influence format in the filename here.
+            param_name = './{}-{}.params'.format(prefix, iteration)
+            mx.nd.save(param_name, save_dict)
+            print >> logs, 'Saved checkpoint to {}'.format(param_name)
+
+        # Evaluate the model after this epoch on the eval set.
+        num_correct = 0
+        num_total = 0
+
+        # For each test batch.
+        for begin in range(0, prepro_data['x_eval'].shape[0], batch_size):
+            batchX = prepro_data['x_eval'][begin:begin+batch_size]
+            batchY = prepro_data['y_eval'][begin:begin+batch_size]
+
+            if batchX.shape[0] != batch_size:
+                continue
+
+            cnn_model.data[:] = batchX
+
+            # Forward propagation again!
+            cnn_model.cnn_exec.forward(is_train=False)
+
+            num_correct += sum(
+                batchY == np.argmax(
+                    cnn_model.cnn_exec.outputs[0].asnumpy(),
+                    axis=1
+                )
+            )
+            num_total += len(batchY)
+
+        evaluation_accuracy = num_correct * 100 / float(num_total)
+        print >> logs, 'Iteration [%d] Train: Time: %.3fs, Training Accuracy: %.3f ' \
+                       'Evaluation Accuracy thus far: %.3f' % (
+            iteration,
+            train_time,
+            train_acc,
+            evaluation_accuracy)
+
     return
 
+####
+# From here down are the unit test functions.
+####
 
-def _test_train():
+
+def _test_build_and_train():
     try:
-        train(
+        build_and_train(
             vocab_size=5,
             sentence_size=10
         )
@@ -128,14 +334,14 @@ def _test_train():
 if __name__ == '__main__':
     # Run unit tests and raise an Exception if any fail.
     testresult = []
-    testresult.append(_test_train())
+    testresult.append(_test_build_and_train())
     for testresult, testmsg in testresult:
         if not testresult:
             raise Exception('Tests did not pass: {}'.format(testmsg))
 
     # At this point all unit tests have completed, run main script.
     prepro_data = load_and_preprocess()
-    train(
+    build_and_train(
         vocab_size=prepro_data['vocab_size'],
         sentence_size=prepro_data['sentence_data']
     )

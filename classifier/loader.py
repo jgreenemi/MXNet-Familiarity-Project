@@ -166,6 +166,10 @@ def load_and_preprocess():
 
     resulting_data = {
         'Train/Eval Split': '{}/{}'.format(len(y_train), len(y_eval)),
+        'x_train': x_train,
+        'x_eval': x_eval,
+        'y_train': y_train,
+        'y_eval': y_eval,
         'x_train_shape': x_train.shape,
         'x_eval_shape': x_eval.shape,
         'vocab_size': vocab_size,
@@ -174,7 +178,9 @@ def load_and_preprocess():
 
     if print_to_stdout:
         for k, v in resulting_data.items():
-            print('{}: {}'.format(k, v))
+            # Don't print the full collections for x/y_train.
+            if k not in ['x_train', 'y_train', 'x_eval', 'y_train']:
+                print('{}: {}'.format(k, v))
 
     return resulting_data
 
