@@ -40,6 +40,77 @@ def train(vocab_size, sentence_size):
         target_shape=(batch_size, 1, sentence_size, num_embed)
     )
 
+    # Create convolution + max pooling layer combination for each filter operation.
+    filter_list=[3, 4, 5]
+    num_filter=100
+    pooled_outputs = []
+
+    # This bit is not explained deeply in the tutorial.
+    # TODO need to review MXNet reference for mx.sym.Convolution/Activation/Pooling.
+    for i, filter_size in enumerate(filter_list):
+        convi = mx.sym.Convolution(
+            data=conv_input,
+            kernel=(filter_size, num_embed),
+            num_filter=num_filter
+        )
+        relui = mx.sym.Activation(
+            data=convi,
+            act_type='relu'
+        )
+        pooli = mx.sym.Pooling(
+            data=relui,
+            pool_type='max',
+            kernel=(sentence_size - filter_size + 1, 1),
+            stride=(1, 1)
+        )
+        pooled_outputs.append(pooli)
+
+    # Combine all the pooled outputs.
+    total_filters = num_filter * len(filter_list)
+    concat = mx.sym.Concat(*pooled_outputs, dim=1)
+
+    # And finally, reshape it for the next layer to use.
+    h_pool = mx.sym.Reshape(
+        data=concat,
+        target_shape=(batch_size, total_filters)
+    )
+
+    # Introduce dropout regularization to reduce bias in neurons.
+    dropout = 0.5
+    if dropout > 0.0:
+        h_drop = mx.sym.Dropout(
+            data=h_pool,
+            p=dropout
+        )
+    else:
+        h_drop = h_pool
+
+    # Now add a fully connected layer. The softmax function applied to the output will yield our classification.
+    # In theory, we up the num_label to match how many classes our data could fit into. In this case, we're
+    # fitting the data to either a 0 or a 1, so we'll have num_label be equal to 2 for a binary classification.
+    num_label = 2
+    cls_weight = mx.sym.Variable('cls_weight')
+    cls_bias = mx.sym.Variable('cls_bias')
+
+    # TODO Determine if "num_hidden" does indeed just mean how many hidden layers there are to be, meaning we could
+    # potentially improve on the accuracy of the algorithm by increasing this value.
+    fc = mx.sym.FullyConnected(
+        data=h_drop,
+        weight=cls_weight,
+        bias=cls_bias,
+        num_hidden=num_label
+    )
+
+    # Determine the softmax output.
+    sm = mx.sym.SoftmaxOutput(
+        data=fc,
+        label=input_y,
+        name='softmax'
+    )
+
+    # Set the CNN pointer to the "back" of the network.
+    cnn = sm
+
     return
 
 
