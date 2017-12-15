@@ -1,9 +1,8 @@
-from .loader import load_and_preprocess
+from classifier.loader import load_and_preprocess
 from collections import namedtuple
 import math
 import mxnet as mx
 import numpy as np
-import os
 import sys
 import time
 
