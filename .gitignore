@@ -3,3 +3,6 @@ test/
 target/
 *.pyc
 env/
+output/
+*.params
+cnn-symbol.json

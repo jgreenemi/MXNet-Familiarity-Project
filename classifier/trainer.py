@@ -1,18 +1,23 @@
-from classifier.loader import load_and_preprocess
+from loader import load_and_preprocess
 from collections import namedtuple
+from pprint import pprint
 import math
 import mxnet as mx
 import numpy as np
 import sys
 import time
+import traceback
 
 
-def build_and_train(vocab_size, sentence_size):
+def build_and_train(vocab_size, sentence_size, prepro_data):
     """
     Load data into the algorithm and train on it. In the future this will likely become a method to a class for
     portability.
     :return:
     """
+
+    # Set the output directory for the .params and symbol.json files.
+    outdir = './target/'
 
     # Set the batch size and placeholders for network inputs and outputs, to be updated later.
     # This is the size of the batches we'll train the network with. This and the num_embed later
@@ -127,9 +132,9 @@ def build_and_train(vocab_size, sentence_size):
     )
 
     # Set what device to train on.
-    ctx = mx.gpu(0)
+    #ctx = mx.gpu(0)
     # Use the following if the training host doesn't have a GPU to use.
-    # ctx = mx.cpu(0)
+    ctx = mx.cpu(0)
 
     arg_names = cnn.list_arguments()
     input_shapes = {}
@@ -160,16 +165,28 @@ def build_and_train(vocab_size, sentence_size):
     # TODO Does that randomize the initial values? What's the 0.1 value for here?
     initializer = mx.initializer.Uniform(0.1)
 
+    # There's an error when initialization occurs with initializer below. Trying a couple things to get around it.
+    #new_initializer = mx.sym.Variable(init=mx.initializer.Uniform(0.1))
+
     for i, name in enumerate(arg_names):
+        #print('i:{}, name:{}'.format(i, name))
+        #print('i:{}, arg_dict[{}]:{}'.format(i, name, arg_dict[name]))
         # Input, output.
         if name in ['softmax_label', 'data']:
             continue
-    initializer(name, arg_dict[name])
 
-    # TODO what are the capabilities of an append statement like this?
-    param_blocks.append(
-        (i, arg_dict[name], args_grad[name], name)
-    )
+        #pprint(arg_dict)
+
+        #initializer.set_verbosity(verbose=True)
+        #print(initializer.dumps())
+
+        # Initialization fails here.
+        initializer(name, arg_dict[name])
+
+        # TODO what are the capabilities of an append statement like this?
+        param_blocks.append(
+            (i, arg_dict[name], args_grad[name], name)
+        )
 
     # This does not appear to get used.
     out_dict = dict(zip(cnn.list_outputs(), cnn_exec.outputs))
@@ -255,17 +272,21 @@ def build_and_train(vocab_size, sentence_size):
         # Decay the learning rate for this epoch to ensure we're not overshooting the optimum.
         if iteration % 50 == 0 and iteration > 0:
             opt.lr *= 0.5
-            print >> logs, 'Reset learning rate to {}'.format(opt.lr)
+            print('Reset learning rate to {}'.format(opt.lr))
 
         # End the training loop for this epoch.
         tock = time.time()
         train_time = tock - tick
-        train_acc = num_correct * 100 / float(num_total)
+        if num_correct == 0 or num_total == 0:
+            print('ERROR num_correct:{}, num_total:{}'.format(num_correct, num_total))
+            train_acc = 0
+        else:
+            train_acc = num_correct * 100 / float(num_total)
 
         # Save the checkpoint to disk.
         if (iteration + 1) % 10 == 0:
             prefix = 'cnn'
-            cnn_model.symbol.save('./{}-symbol.json'.format(prefix))
+            cnn_model.symbol.save('{}{}-symbol.json'.format(outdir, prefix))
             save_dict = {
                 ('arg:{}'.format(k)): v for k, v in cnn_model.cnn_exec.arg_dict.items()
             }
@@ -275,9 +296,9 @@ def build_and_train(vocab_size, sentence_size):
                 }
             )
             # Tutorial gives different syntax for this, could influence format in the filename here.
-            param_name = './{}-{}.params'.format(prefix, iteration)
+            param_name = '{}{}-{}.params'.format(outdir, prefix, iteration)
             mx.nd.save(param_name, save_dict)
-            print >> logs, 'Saved checkpoint to {}'.format(param_name)
+            print('Saved checkpoint to {}'.format(param_name))
 
         # Evaluate the model after this epoch on the eval set.
         num_correct = 0
@@ -304,13 +325,18 @@ def build_and_train(vocab_size, sentence_size):
             )
             num_total += len(batchY)
 
-        evaluation_accuracy = num_correct * 100 / float(num_total)
-        print >> logs, 'Iteration [%d] Train: Time: %.3fs, Training Accuracy: %.3f ' \
+
+        if num_correct == 0 or num_total == 0:
+            print('ERROR Evaluation: num_correct:{}, num_total:{}'.format(num_correct, num_total))
+            evaluation_accuracy = 0
+        else:
+            evaluation_accuracy = num_correct * 100 / float(num_total)
+        print('Iteration [%d] Train: Time: %.3fs, Training Accuracy: %.3f ' \
                        'Evaluation Accuracy thus far: %.3f' % (
             iteration,
             train_time,
             train_acc,
-            evaluation_accuracy)
+            evaluation_accuracy))
 
     return
 
@@ -321,26 +347,35 @@ def build_and_train(vocab_size, sentence_size):
 
 def _test_build_and_train():
     try:
+        # TODO fabricate this dictionary for the unit test to use.
+        prepro_data = {
+            'THIS DICT NEEDS TO BE POPULATED.': ''
+        }
         build_and_train(
             vocab_size=5,
-            sentence_size=10
+            sentence_size=10,
+            prepro_data=prepro_data
         )
         return [True, '']
     except Exception as e:
-        return [False, '_test_train: {}'.format(e)]
+        e_extended = traceback.format_exc()
+        return [False, '_test_train: {}\n{}'.format(e, e_extended)]
 
 
 if __name__ == '__main__':
     # Run unit tests and raise an Exception if any fail.
     testresult = []
-    testresult.append(_test_build_and_train())
+    # Disabling this until I can fabricate the prepro_data dictionary.
+    #testresult.append(_test_build_and_train())
     for testresult, testmsg in testresult:
         if not testresult:
             raise Exception('Tests did not pass: {}'.format(testmsg))
 
     # At this point all unit tests have completed, run main script.
     prepro_data = load_and_preprocess()
+    # TODO Should just get the vocab/sentence_size from prepro_data within build_and_train.
     build_and_train(
         vocab_size=prepro_data['vocab_size'],
-        sentence_size=prepro_data['sentence_data']
+        sentence_size=prepro_data['sentence_size'],
+        prepro_data=prepro_data
     )
