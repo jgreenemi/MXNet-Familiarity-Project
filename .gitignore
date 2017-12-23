@@ -1,8 +1,12 @@
+# Ignore these.
 .idea/
 test/
-target/
+target/*
 *.pyc
 env/
 output/
 *.params
 cnn-symbol.json
+
+# And keep these...
+!.gitkeep
