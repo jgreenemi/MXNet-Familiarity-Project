@@ -132,9 +132,9 @@ def build_and_train(vocab_size, sentence_size, prepro_data):
     )
 
     # Set what device to train on.
-    #ctx = mx.gpu(0)
+    ctx = mx.gpu(0)
     # Use the following if the training host doesn't have a GPU to use.
-    ctx = mx.cpu(0)
+    #ctx = mx.cpu(0)
 
     arg_names = cnn.list_arguments()
     input_shapes = {}
